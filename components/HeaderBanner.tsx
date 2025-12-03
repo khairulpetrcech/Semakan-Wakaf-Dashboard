@@ -35,7 +35,7 @@ export const HeaderBanner: React.FC = () => {
             </div>
             <div className="flex items-center gap-2 justify-center md:justify-start bg-[#002233]/50 p-2 rounded-lg backdrop-blur-sm border border-sky-700/30">
               <CheckCircle size={18} className="text-yellow-400 flex-shrink-0" /> 
-              <span>Tiada Pihak Ketiga</span>
+              <span>AlQuran Lulus KDN</span>
             </div>
             <div className="flex items-center gap-2 justify-center md:justify-start bg-[#002233]/50 p-2 rounded-lg backdrop-blur-sm border border-sky-700/30">
               <CheckCircle size={18} className="text-yellow-400 flex-shrink-0" /> 
