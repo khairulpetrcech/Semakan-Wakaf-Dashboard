@@ -1,7 +1,7 @@
 import { WakafRecord, MediaItem } from '../types';
 
 // ---------------------------------------------------------------------------
-// ARAHAN PENTING UNTUK DEPLOYMENT GOOGLE APPS SCRIPT (V13 - DIRECT CELL READING):
+// ARAHAN PENTING UNTUK DEPLOYMENT GOOGLE APPS SCRIPT (V14 - SMART INVOICE SEARCH):
 // 1. Buka Google Sheet > Extensions > Apps Script.
 // 2. Padam kod lama sepenuhnya.
 // 3. COPY & PASTE kod di bawah ini.
@@ -41,6 +41,10 @@ function doGet(e) {
   var result = null;
   var searchQ = String(query).trim().toLowerCase();
   var cleanQueryPhone = searchQ.replace(/[^0-9]/g, '');
+  
+  // Bersihkan Query Invois (Buang simbol seperti - / space)
+  // Contoh: "INV-2024" jadi "inv2024"
+  var cleanQueryInvoice = searchQ.replace(/[^a-z0-9]/g, '');
 
   // LOOP SETIAP SHEET
   for (var s = 0; s < sheets.length; s++) {
@@ -63,7 +67,6 @@ function doGet(e) {
 
     // --- 2. CARI DATA PEWAKAF ---
     // Mula dari i=1 (Row 2) kerana header Row 1.
-    // Walaupun Row 2 ada Global Data, ia mungkin juga mengandungi data pewakaf pertama, jadi kita scan dari situ.
     for (var i = 1; i < data.length; i++) {
       var row = data[i];
       // Skip baris kosong
@@ -78,7 +81,19 @@ function doGet(e) {
       var match = false;
 
       if (type === 'invoice') {
-        if (rowInvoice === searchQ) match = true;
+        // SMART INVOICE SEARCH
+        // Buang simbol dari data dalam sheet juga
+        var cleanRowInvoice = rowInvoice.replace(/[^a-z0-9]/g, '');
+        
+        // 1. Exact match selepas bersih (Contoh: "INV-001" == "INV 001")
+        if (cleanRowInvoice === cleanQueryInvoice) {
+           match = true;
+        }
+        // 2. Partial match (Contoh: User taip "001", Sheet ada "INV-001")
+        // Pastikan query panjang sikit (> 3 char) supaya tak match salah (cth: taip "1" jumpa semua)
+        else if (cleanQueryInvoice.length > 3 && cleanRowInvoice.indexOf(cleanQueryInvoice) > -1) {
+           match = true;
+        }
       } 
       else if (type === 'phone') {
         if (cleanQueryPhone.length > 5) {
@@ -93,7 +108,6 @@ function doGet(e) {
         var rowSpecificMedia = String(row[COL_MEDIA] || "").trim();
         var finalMedia = sheetGlobalMedia;
         
-        // Elak duplikasi jika media row sama dengan global
         if (rowSpecificMedia && rowSpecificMedia !== sheetGlobalMedia) {
           if (finalMedia) finalMedia += "," + rowSpecificMedia;
           else finalMedia = rowSpecificMedia;
@@ -254,7 +268,7 @@ const searchMockData = async (query: string, type: 'invoice' | 'phone'): Promise
 
   return MOCK_DATABASE.find(r => {
     if (type === 'invoice') {
-      return r.invoiceNo.toLowerCase() === q;
+      return r.invoiceNo.replace(/[^a-z0-9]/g, '').includes(q.replace(/[^a-z0-9]/g, ''));
     } else {
       return r.phoneNo.includes(q) || r.donorName.toLowerCase().includes(q);
     }
