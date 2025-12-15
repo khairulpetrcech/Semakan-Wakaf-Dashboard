@@ -1,7 +1,7 @@
 import { WakafRecord, MediaItem } from '../types';
 
 // ---------------------------------------------------------------------------
-// ARAHAN PENTING UNTUK DEPLOYMENT GOOGLE APPS SCRIPT (V15 - SUPER SMART INVOICE SEARCH):
+// ARAHAN PENTING UNTUK DEPLOYMENT GOOGLE APPS SCRIPT (V16 - LATEST RECORD PRIORITY):
 // 1. Buka Google Sheet > Extensions > Apps Script.
 // 2. Padam kod lama sepenuhnya.
 // 3. COPY & PASTE kod di bawah ini.
@@ -13,8 +13,8 @@ import { WakafRecord, MediaItem } from '../types';
 function doGet(e) {
   // --- KONFIGURASI LAJUR DATA PEWAKAF ---
   // A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7, I=8, J=9
-  var COL_KOD_BORANG = 1; // B (Sistem akan cari ID di sini juga)
-  var COL_INVOIS     = 2; // C (Tempat asal Invois)
+  var COL_KOD_BORANG = 1; // B
+  var COL_INVOIS     = 2; // C
   var COL_NAMA       = 3; // D
   var COL_PHONE      = 4; // E
   var COL_JUMLAH     = 5; // F 
@@ -38,12 +38,12 @@ function doGet(e) {
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheets = ss.getSheets(); 
-  var result = null;
+  
+  // Array untuk simpan semua rekod yang jumpa
+  var foundRecords = [];
+  
   var searchQ = String(query).trim().toLowerCase();
   var cleanQueryPhone = searchQ.replace(/[^0-9]/g, '');
-  
-  // Bersihkan Query Invois (Buang simbol dan jarak)
-  // Contoh: "102074" kekal "102074", "INV-2024" jadi "inv2024"
   var cleanQueryInvoice = searchQ.replace(/[^a-z0-9]/g, '');
 
   // LOOP SETIAP SHEET
@@ -68,7 +68,7 @@ function doGet(e) {
       if (row.length < 3) continue; 
 
       var rowInvoice = String(row[COL_INVOIS] || "").trim().toLowerCase();
-      var rowKodRaw  = String(row[COL_KOD_BORANG] || "").trim().toLowerCase(); // Ambil Kod Borang (B)
+      var rowKodRaw  = String(row[COL_KOD_BORANG] || "").trim().toLowerCase();
       var rowName    = String(row[COL_NAMA] || "").trim().toLowerCase();
       var rowPhoneRaw = String(row[COL_PHONE] || "");
       var rowPhoneClean = rowPhoneRaw.replace(/[^0-9]/g, '');
@@ -76,19 +76,12 @@ function doGet(e) {
       var match = false;
 
       if (type === 'invoice') {
-        // V15 SUPER SMART SEARCH
-        // Cari dalam Column C (Invois) DAN Column B (Kod Borang)
-        
         var cleanRowInvoice = rowInvoice.replace(/[^a-z0-9]/g, '');
         var cleanRowKod = rowKodRaw.replace(/[^a-z0-9]/g, '');
 
-        // 1. Exact Match (Cari dalam kedua-dua column)
-        // Jika user cari "102074", kita check Column B juga
         if (cleanRowInvoice === cleanQueryInvoice || cleanRowKod === cleanQueryInvoice) {
            match = true;
-        }
-        // 2. Partial Match (Hanya jika query panjang > 3 untuk elak salah match)
-        else if (cleanQueryInvoice.length > 3) {
+        } else if (cleanQueryInvoice.length > 3) {
            if (cleanRowInvoice.indexOf(cleanQueryInvoice) > -1) match = true;
            else if (cleanRowKod.indexOf(cleanQueryInvoice) > -1) match = true;
         }
@@ -109,9 +102,9 @@ function doGet(e) {
           else finalMedia = rowSpecificMedia;
         }
 
-        result = {
+        // Simpan dalam array (belum return lagi)
+        foundRecords.push({
           id: sheet.getName() + '-' + (i + 1),
-          // Paparkan Invois, kalau kosong guna Kod Borang
           invoiceNo: row[COL_INVOIS] || row[COL_KOD_BORANG], 
           phoneNo: row[COL_PHONE], 
           donorName: row[COL_NAMA],
@@ -121,19 +114,49 @@ function doGet(e) {
           institutionName: row[COL_INSTITUSI],
           media: processMediaLinks(finalMedia),
           deliveryInstitution: globalDeliveryInst, 
-          deliveryDate: globalDeliveryDate
-        };
-        break; 
+          deliveryDate: globalDeliveryDate,
+          // Tambah timestamp untuk sorting
+          timestamp: parseDateMy(row[COL_TARIKH]).getTime()
+        });
       }
     }
-    if (result) break; 
   }
 
-  if (result) {
-    return ContentService.createTextOutput(JSON.stringify({ found: true, data: result })).setMimeType(ContentService.MimeType.JSON);
+  // LOGIK PENTING: Jika ada lebih dari satu rekod, cari yang paling LATEST
+  if (foundRecords.length > 0) {
+    // Sort descending (Terbaru di atas)
+    foundRecords.sort(function(a, b) {
+      return b.timestamp - a.timestamp;
+    });
+
+    // Ambil yang paling atas (Latest)
+    var latestRecord = foundRecords[0];
+
+    // Buang field timestamp sebelum hantar ke frontend
+    delete latestRecord.timestamp;
+
+    return ContentService.createTextOutput(JSON.stringify({ found: true, data: latestRecord })).setMimeType(ContentService.MimeType.JSON);
   } else {
     return ContentService.createTextOutput(JSON.stringify({ found: false, message: "Rekod tidak dijumpai" })).setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+// Helper untuk parse tarikh format Malaysia (DD/MM/YYYY HH:mm)
+function parseDateMy(dateStr) {
+  if (!dateStr) return new Date(0);
+  // Split by non-digit characters
+  var parts = dateStr.split(/[^0-9]/);
+  
+  // Perlukan sekurang-kurangnya Day, Month, Year
+  if (parts.length < 3) return new Date(0);
+  
+  var day = parseInt(parts[0], 10) || 1;
+  var month = (parseInt(parts[1], 10) || 1) - 1; // JS month 0-11
+  var year = parseInt(parts[2], 10) || 1970;
+  var hour = parts.length > 3 ? parseInt(parts[3], 10) : 0;
+  var min = parts.length > 4 ? parseInt(parts[4], 10) : 0;
+  
+  return new Date(year, month, day, hour, min);
 }
 
 function processMediaLinks(mediaString) {
@@ -158,7 +181,7 @@ function processMediaLinks(mediaString) {
 // ---------------------------------------------------------------------------
 
 // ⚠️ PASTE 'WEB APP URL' ANDA DI SINI (Mesti berakhir dengan /exec)
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxOmop7JVPNqZW492Q6EdwfExoRQ4UYlkxey-lAtkbY35ztH0KYFYo1wE-0NB94YBx3/exec';
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz1SEbD_Luk7vCSNZT1LUQDLAVivvrPp6PETXKbhtkjR6nS8NefB0Jki-l3xj66EJ_K/exec';
 
 // --- CLIENT SIDE HELPERS ---
 const processMediaLinksClientSide = (mediaString: string): MediaItem[] => {
@@ -181,6 +204,18 @@ const processMediaLinksClientSide = (mediaString: string): MediaItem[] => {
     }
   }
   return mediaArray;
+};
+
+// Helper date parser untuk Client Side (Mock Data)
+const parseDateString = (dateStr: string): Date => {
+  const parts = dateStr.split(/[^0-9]/);
+  if (parts.length < 3) return new Date(0);
+  const day = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const year = parseInt(parts[2], 10);
+  const hour = parts.length > 3 ? parseInt(parts[3], 10) : 0;
+  const min = parts.length > 4 ? parseInt(parts[4], 10) : 0;
+  return new Date(year, month, day, hour, min);
 };
 
 export const searchWakafRecord = async (query: string, type: 'invoice' | 'phone'): Promise<WakafRecord | null> => {
@@ -226,7 +261,7 @@ export const searchWakafRecord = async (query: string, type: 'invoice' | 'phone'
   }
 };
 
-// --- MOCK DATA ---
+// --- MOCK DATA UPDATED (RETURNS LATEST) ---
 const searchMockData = async (query: string, type: 'invoice' | 'phone'): Promise<WakafRecord | null> => {
   await new Promise(resolve => setTimeout(resolve, 800));
   
@@ -234,16 +269,28 @@ const searchMockData = async (query: string, type: 'invoice' | 'phone'): Promise
     {
       id: 'Sheet1-1',
       invoiceNo: '106747',
-      donorName: 'Mohammad Pauzi Bin An Wahab',
+      donorName: 'Mohammad Pauzi (Transaksi Lama)',
+      phoneNo: '0123456789',
+      amount: '50',
+      date: '27/10/2024 10:00', // Tarikh Lama
+      notes: 'Wakaf bulan lepas',
+      institutionName: 'tahfiz ulu albab',
+      deliveryInstitution: "Maahad Tahfiz Ulu Albab",
+      deliveryDate: "15/11/2024",
+      media: processMediaLinksClientSide('https://t.me/assalamcaremalaysia/3') 
+    },
+    {
+      id: 'Sheet1-3',
+      invoiceNo: '106999',
+      donorName: 'Mohammad Pauzi Bin An Wahab (TERKINI)',
       phoneNo: '0123456789',
       amount: '100',
-      date: '27/10/2025 20:41',
-      notes: '',
+      date: '27/10/2025 20:41', // Tarikh Baru (Sepatutnya ini yang keluar)
+      notes: 'Wakaf terkini',
       institutionName: 'tahfiz ulu albab',
-      // MOCK DATA: Simulasi data dari Column K Row 2 & Column L Row 2
-      deliveryInstitution: "Maahad Tahfiz Ulu Albab (Data dari Col K Row 2)",
-      deliveryDate: "15/11/2025",
-      media: processMediaLinksClientSide('https://t.me/assalamcaremalaysia/3') 
+      deliveryInstitution: "Maahad Tahfiz Ulu Albab",
+      deliveryDate: "01/12/2025",
+      media: processMediaLinksClientSide('https://t.me/assalamcaremalaysia/4') 
     },
     {
       id: 'Sheet1-2',
@@ -254,7 +301,7 @@ const searchMockData = async (query: string, type: 'invoice' | 'phone'): Promise
       date: '28/10/2025 10:00',
       notes: 'Wakaf untuk arwah suami',
       institutionName: 'Maahad Tahfiz Integrasi',
-      deliveryInstitution: "Rumah Anak Yatim Damai (Data dari Col K Row 2)",
+      deliveryInstitution: "Rumah Anak Yatim Damai",
       deliveryDate: "01/12/2025",
       media: processMediaLinksClientSide('https://t.me/assalamcaremalaysia/5, https://images.unsplash.com/photo-1609599006353-e629aaabfeae?q=80&w=1000')
     }
@@ -262,7 +309,8 @@ const searchMockData = async (query: string, type: 'invoice' | 'phone'): Promise
 
   const q = query.toLowerCase().trim();
 
-  return MOCK_DATABASE.find(r => {
+  // 1. Cari semua yang match
+  const matches = MOCK_DATABASE.filter(r => {
     if (type === 'invoice') {
       const cleanQ = q.replace(/[^a-z0-9]/g, '');
       const cleanInv = r.invoiceNo.replace(/[^a-z0-9]/g, '');
@@ -270,5 +318,17 @@ const searchMockData = async (query: string, type: 'invoice' | 'phone'): Promise
     } else {
       return r.phoneNo.includes(q) || r.donorName.toLowerCase().includes(q);
     }
-  }) || null;
+  });
+
+  // 2. Jika ada match, sort ikut tarikh (Latest first)
+  if (matches.length > 0) {
+    matches.sort((a, b) => {
+      const dateA = parseDateString(a.date).getTime();
+      const dateB = parseDateString(b.date).getTime();
+      return dateB - dateA; // Descending
+    });
+    return matches[0]; // Return yang paling latest
+  }
+
+  return null;
 };
