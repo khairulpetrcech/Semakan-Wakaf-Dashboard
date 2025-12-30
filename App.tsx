@@ -186,7 +186,7 @@ const App: React.FC = () => {
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-50 shadow-[0_-8px_20px_-5px_rgba(0,0,0,0.1)]">
           <div className="max-w-3xl mx-auto">
             <a 
-              href="https://assalamcare.com" 
+              href="https://assalamcare.com/order/form/blastwhatsapp" 
               target="_blank"
               rel="noreferrer"
               className="block w-full bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white text-center py-4 px-6 rounded-xl shadow-lg transform transition-transform active:scale-95 border-b-4 border-amber-700"
