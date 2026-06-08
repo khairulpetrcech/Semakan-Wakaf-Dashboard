@@ -1,15 +1,25 @@
 import { WakafRecord, MediaItem } from '../types';
 
 // ---------------------------------------------------------------------------
-// ARAHAN PENTING UNTUK DEPLOYMENT GOOGLE APPS SCRIPT (V16 - LATEST RECORD PRIORITY):
-// 1. Buka Google Sheet > Extensions > Apps Script.
+// ARAHAN PENTING UNTUK DEPLOYMENT GOOGLE APPS SCRIPT (V17 - MULTI SPREADSHEET):
+// 1. Buka MANA-MANA Google Sheet > Extensions > Apps Script.
+//    (Disyorkan: buat satu projek Apps Script berasingan supaya senang urus banyak fail.)
 // 2. Padam kod lama sepenuhnya.
 // 3. COPY & PASTE kod di bawah ini.
-// 4. PENTING: Klik butang 'Deploy' (Biru) > 'New deployment'.
-// 5. Pastikan 'Who has access' = 'Anyone'.
-// 6. Klik 'Deploy'. 
+// 4. PENTING: Isi SPREADSHEET_IDS dengan ID setiap Google Sheet (Sheet 1, Sheet 2, dst).
+//    - ID adalah bahagian dalam URL: docs.google.com/spreadsheets/d/<INI_ID_DIA>/edit
+//    - Akaun yang deploy script MESTI ada akses ke semua spreadsheet ini.
+// 5. Klik butang 'Deploy' (Biru) > 'New deployment'.
+// 6. Pastikan 'Who has access' = 'Anyone'. Klik 'Deploy'.
+// 7. Untuk tambah Sheet 3, 4, ... nanti: cukup tambah ID dalam SPREADSHEET_IDS & redeploy.
 
 /*
+// ⚠️ ISI ID SEMUA SPREADSHEET DI SINI (boleh tambah seberapa banyak yang perlu)
+var SPREADSHEET_IDS = [
+  "19P2NaEwYSz7dve7JJsZ0rcYFcWLZ2bUOVlLJjOFzCG0",
+  "1vREDeozS-UHhvmY-TrBFUjitJKVT1vILJU4b6whmzao"
+];
+
 function doGet(e) {
   // --- KONFIGURASI LAJUR DATA PEWAKAF ---
   // A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7, I=8, J=9
@@ -36,17 +46,26 @@ function doGet(e) {
     return ContentService.createTextOutput(JSON.stringify({ found: false, error: "Parameter tidak lengkap" })).setMimeType(ContentService.MimeType.JSON);
   }
 
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheets = ss.getSheets(); 
-  
-  // Array untuk simpan semua rekod yang jumpa
+  // Array untuk simpan semua rekod yang jumpa (merentas SEMUA spreadsheet & tab)
   var foundRecords = [];
   
   var searchQ = String(query).trim().toLowerCase();
   var cleanQueryPhone = searchQ.replace(/[^0-9]/g, '');
   var cleanQueryInvoice = searchQ.replace(/[^a-z0-9]/g, '');
 
-  // LOOP SETIAP SHEET
+  // LOOP SETIAP SPREADSHEET (Google Sheet 1, 2, ...)
+  for (var f = 0; f < SPREADSHEET_IDS.length; f++) {
+    var ss;
+    try {
+      ss = SpreadsheetApp.openById(SPREADSHEET_IDS[f]);
+    } catch (err) {
+      // Langkau spreadsheet yang gagal dibuka (ID salah / tiada akses)
+      continue;
+    }
+    var sheets = ss.getSheets();
+    var ssName = ss.getName();
+
+  // LOOP SETIAP SHEET (tab) dalam spreadsheet
   for (var s = 0; s < sheets.length; s++) {
     var sheet = sheets[s];
     var data = sheet.getDataRange().getDisplayValues();
@@ -104,7 +123,7 @@ function doGet(e) {
 
         // Simpan dalam array (belum return lagi)
         foundRecords.push({
-          id: sheet.getName() + '-' + (i + 1),
+          id: ssName + '::' + sheet.getName() + '-' + (i + 1),
           invoiceNo: row[COL_INVOIS] || row[COL_KOD_BORANG], 
           phoneNo: row[COL_PHONE], 
           donorName: row[COL_NAMA],
@@ -121,6 +140,7 @@ function doGet(e) {
       }
     }
   }
+  } // tutup loop spreadsheet (SPREADSHEET_IDS)
 
   // LOGIK PENTING: Jika ada lebih dari satu rekod, cari yang paling LATEST
   if (foundRecords.length > 0) {
@@ -181,7 +201,7 @@ function processMediaLinks(mediaString) {
 // ---------------------------------------------------------------------------
 
 // ⚠️ PASTE 'WEB APP URL' ANDA DI SINI (Mesti berakhir dengan /exec)
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz1SEbD_Luk7vCSNZT1LUQDLAVivvrPp6PETXKbhtkjR6nS8NefB0Jki-l3xj66EJ_K/exec';
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbynDW15k-Ayh9Nrb0PXAmAsK07Weusx2oYltiOvL0q9AwJWpGyvIC8IYrLns4Aw1ZUE/exec';
 
 // --- CLIENT SIDE HELPERS ---
 const processMediaLinksClientSide = (mediaString: string): MediaItem[] => {
